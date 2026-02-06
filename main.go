@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"golang.org/x/term"
@@ -51,7 +52,7 @@ func playAlarm() {
 
 	var songs []string
 	for _, e := range entries {
-		if !e.IsDir() {
+		if !e.IsDir() && strings.EqualFold(filepath.Ext(e.Name()), ".mp3") {
 			songs = append(songs, filepath.Join(dir, e.Name()))
 		}
 	}
@@ -74,6 +75,7 @@ func playAlarm() {
 	}
 
 	// Listen for 'a' keypress in background.
+	dismissed := make(chan struct{}, 1)
 	go func() {
 		buf := make([]byte, 1)
 		for {
@@ -83,6 +85,7 @@ func playAlarm() {
 			}
 			if buf[0] == 'a' || buf[0] == 'A' {
 				log.Println("\nalarm dismissed by keypress")
+				dismissed <- struct{}{}
 				cancel()
 				return
 			}
@@ -99,6 +102,20 @@ func playAlarm() {
 		if err := cmd.Run(); err != nil && ctx.Err() == nil {
 			log.Printf("playback error: %v", err)
 		}
+	}
+
+	// If dismissed by keypress, play the wow sound.
+	select {
+	case <-dismissed:
+		wowFile := filepath.Join(home, ".wow.mp3")
+		log.Printf("playing %s", wowFile)
+		cmd := exec.Command("mpv", "--no-video", wowFile)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			log.Printf("error playing wow: %v", err)
+		}
+	default:
 	}
 
 	log.Println("alarm finished")
