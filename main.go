@@ -74,7 +74,7 @@ func playAlarm() {
 		song := songs[rand.Intn(len(songs))]
 		log.Printf("playing %s", filepath.Base(song))
 
-		cmd := exec.CommandContext(ctx, "mpv", "--no-video", song)
+		cmd := exec.CommandContext(ctx, "mpv", "--no-video", "--no-input-terminal", song)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err := cmd.Run(); err != nil && ctx.Err() == nil {
