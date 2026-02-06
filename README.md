@@ -1,6 +1,6 @@
 # Raspberry Alarm
 
-A wake-up alarm that plays random songs from `~/WakeUpSongs` at 9AM every day for 15 minutes. Press a button to dismiss early and get a robot compliment.
+A wake-up alarm that plays random songs from `~/WakeUpSongs` at 9AM every day for 15 minutes. Press a button to dismiss early and get a robot compliment. I have it set up to run on a Raspberry Pi with a speaker connected and a USB Button attached that sends the key "a" on button press.
 
 ## Pi Dependencies
 
