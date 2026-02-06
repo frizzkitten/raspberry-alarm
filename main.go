@@ -23,7 +23,6 @@ const (
 
 func main() {
 	log.Println("raspberry-alarm started")
-	playAlarm()
 	for {
 		sleepUntilAlarm()
 		playAlarm()
