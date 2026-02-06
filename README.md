@@ -30,6 +30,8 @@ Name=Raspberry Alarm
 Exec=lxterminal -e /home/pi-username/raspberry-alarm
 ```
 
+Then make a folder in the home directory of the Pi called WakeUpSongs. Inside it, put as many .mp3 files as you'd like!
+
 
 ## Build & Deploy
 
