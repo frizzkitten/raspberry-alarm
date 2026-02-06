@@ -30,7 +30,9 @@ Name=Raspberry Alarm
 Exec=lxterminal -e /home/pi-username/raspberry-alarm
 ```
 
-Then make a folder in the home directory of the Pi called WakeUpSongs. Inside it, put as many .mp3 files as you'd like!
+Then make a folder in the root directory of the Pi called WakeUpSongs. Inside it, put as many .mp3 files as you'd like!
+
+Then add a file called success.mp3 and another called failure.mp3 to the root directory. success.mp3 will play when the alarm is stopped via input, and failure.mp3 will play if the songs are not stopped within the allotted time.
 
 
 ## Build & Deploy

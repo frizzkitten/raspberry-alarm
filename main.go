@@ -133,9 +133,9 @@ func playOutro(home string, dismissed <-chan struct{}) {
 	select {
 	case <-dismissed:
 		// randomCompliment()
-		outroFile = filepath.Join(home, "wow.mp3")
+		outroFile = filepath.Join(home, "success.mp3")
 	default:
-		outroFile = filepath.Join(home, "wkuk.mp3")
+		outroFile = filepath.Join(home, "failure.mp3")
 	}
 
 	log.Printf("playing %s", outroFile)
