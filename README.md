@@ -59,3 +59,7 @@ You can find the Pi's IP by hovering over the wifi symbol in the top right on th
 chmod +x raspberry-alarm
 ./raspberry-alarm
 ```
+
+## Note
+
+I have the compliments turned off at the moment. You can turn them back on by uncommenting `randomCompliment()`.
