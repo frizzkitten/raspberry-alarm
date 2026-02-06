@@ -17,13 +17,12 @@ import (
 const (
 	alarmHour     = 9
 	alarmMinute   = 0
-	alarmDuration = 1 * time.Minute
+	alarmDuration = 15 * time.Minute
 	songsDir      = "WakeUpSongs"
 )
 
 func main() {
 	log.Println("raspberry-alarm started")
-	playAlarm()
 	for {
 		now := time.Now()
 		next := time.Date(now.Year(), now.Month(), now.Day(), alarmHour, alarmMinute, 0, 0, now.Location())
@@ -74,7 +73,7 @@ func playAlarm() {
 		song := songs[rand.Intn(len(songs))]
 		log.Printf("playing %s", filepath.Base(song))
 
-		cmd := exec.CommandContext(ctx, "mpv", "--no-video", "--no-input-terminal", song)
+		cmd := exec.CommandContext(ctx, "mpv", "--no-video", "--no-terminal", song)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		if err := cmd.Run(); err != nil && ctx.Err() == nil {
@@ -105,9 +104,9 @@ func playAlarm() {
 // to detect an 'a' keypress regardless of window focus.
 func listenForButton(ctx context.Context, cancel context.CancelFunc, dismissed chan<- struct{}) {
 	const (
-		evKey    = 1  // EV_KEY event type
-		keyA     = 30 // KEY_A scancode
-		keyPress = 1  // key pressed (vs released/held)
+		evKey     = 1  // EV_KEY event type
+		keyA      = 30 // KEY_A scancode
+		keyPress  = 1  // key pressed (vs released/held)
 		eventSize = 24 // sizeof(struct input_event) on 64-bit Linux
 	)
 
