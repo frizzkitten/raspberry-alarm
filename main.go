@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
+	"io"
 	"log"
 	"math/rand"
 	"os"
@@ -10,14 +12,12 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-
-	"golang.org/x/term"
 )
 
 const (
 	alarmHour     = 9
 	alarmMinute   = 0
-	alarmDuration = 15 * time.Minute
+	alarmDuration = 1 * time.Minute
 	songsDir      = "WakeUpSongs"
 )
 
@@ -66,31 +66,9 @@ func playAlarm() {
 	ctx, cancel := context.WithTimeout(context.Background(), alarmDuration)
 	defer cancel()
 
-	// Put terminal in raw mode to capture individual keypresses.
-	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
-	if err != nil {
-		log.Printf("warning: cannot set raw terminal mode: %v", err)
-	} else {
-		defer term.Restore(int(os.Stdin.Fd()), oldState)
-	}
-
-	// Listen for 'a' keypress in background.
+	// Listen for 'a' keypress on all input devices (works without window focus).
 	dismissed := make(chan struct{}, 1)
-	go func() {
-		buf := make([]byte, 1)
-		for {
-			n, err := os.Stdin.Read(buf)
-			if err != nil || n == 0 {
-				return
-			}
-			if buf[0] == 'a' || buf[0] == 'A' {
-				log.Println("\nalarm dismissed by keypress")
-				dismissed <- struct{}{}
-				cancel()
-				return
-			}
-		}
-	}()
+	listenForButton(ctx, cancel, dismissed)
 
 	for ctx.Err() == nil {
 		song := songs[rand.Intn(len(songs))]
@@ -104,21 +82,87 @@ func playAlarm() {
 		}
 	}
 
-	// If dismissed by keypress, play the wow sound.
+	// Play a different sound depending on how the alarm ended.
+	var outroFile string
 	select {
 	case <-dismissed:
-		wowFile := filepath.Join(home, ".wow.mp3")
-		log.Printf("playing %s", wowFile)
-		cmd := exec.Command("mpv", "--no-video", wowFile)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil {
-			log.Printf("error playing wow: %v", err)
-		}
+		outroFile = filepath.Join(home, "wow.mp3")
 	default:
+		outroFile = filepath.Join(home, "wkuk.mp3")
+	}
+	log.Printf("playing %s", outroFile)
+	cmd := exec.Command("mpv", "--no-video", outroFile)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		log.Printf("error playing outro: %v", err)
 	}
 
 	log.Println("alarm finished")
+}
+
+// listenForButton reads raw input events from /dev/input/event* devices
+// to detect an 'a' keypress regardless of window focus.
+func listenForButton(ctx context.Context, cancel context.CancelFunc, dismissed chan<- struct{}) {
+	const (
+		evKey    = 1  // EV_KEY event type
+		keyA     = 30 // KEY_A scancode
+		keyPress = 1  // key pressed (vs released/held)
+		eventSize = 24 // sizeof(struct input_event) on 64-bit Linux
+	)
+
+	matches, err := filepath.Glob("/dev/input/event*")
+	if err != nil || len(matches) == 0 {
+		log.Println("warning: no input devices found")
+		return
+	}
+
+	var files []*os.File
+	for _, dev := range matches {
+		f, err := os.Open(dev)
+		if err != nil {
+			continue
+		}
+		files = append(files, f)
+	}
+
+	if len(files) == 0 {
+		log.Println("warning: cannot open any input devices (try: sudo usermod -aG input $USER)")
+		return
+	}
+
+	log.Printf("listening for button on %d input devices", len(files))
+
+	// Close all files when context is done to unblock readers.
+	go func() {
+		<-ctx.Done()
+		for _, f := range files {
+			f.Close()
+		}
+	}()
+
+	for _, f := range files {
+		go func(f *os.File) {
+			buf := make([]byte, eventSize)
+			for {
+				if _, err := io.ReadFull(f, buf); err != nil {
+					return
+				}
+				typ := binary.LittleEndian.Uint16(buf[16:18])
+				code := binary.LittleEndian.Uint16(buf[18:20])
+				value := binary.LittleEndian.Uint32(buf[20:24])
+				if typ == evKey && code == keyA && value == keyPress {
+					log.Println("alarm dismissed by button press")
+					select {
+					case dismissed <- struct{}{}:
+					default:
+					}
+					cancel()
+					return
+				}
+			}
+		}(f)
+	}
 }
 
 func init() {

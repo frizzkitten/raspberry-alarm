@@ -25,4 +25,22 @@ And then you can run it like this:
 ./raspberry-alarm
 ```
 
-But it should also run automatically on startup.
+But it should also run automatically on startup if you've done the setup for that on the Pi:
+
+```
+mkdir -p ~/.config/autostart
+nano ~/.config/autostart/raspberry-alarm.desktop
+```
+
+```
+[Desktop Entry]
+Type=Application
+Name=Raspberry Alarm
+Exec=lxterminal -e /home/your-username/raspberry-alarm
+```
+
+You'll also need to give permission for the user to read inputs directly so we can read the button press:
+
+```
+sudo usermod -aG input your-username
+```
