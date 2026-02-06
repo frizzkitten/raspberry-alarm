@@ -1,55 +1,57 @@
-Initial setup:
+# Raspberry Alarm
 
-On the Pi, install dependencies:
+A wake-up alarm that plays random songs from `~/WakeUpSongs` at 9AM every day for 15 minutes. Press a button to dismiss early and get a robot compliment.
 
-```
-sudo apt install espeak-ng
-@Claude can you put in the mpv thing in here too?
-```
-
-If you make edits, rebuild for the Pi like this:
+## Pi Dependencies
 
 ```
-GOOS=linux GOARCH=arm64 go build -o raspberry-alarm main.go
+sudo apt install mpv espeak-ng
 ```
 
-Then transfer the new executable to the pi like this:
+## Pi Setup (one-time)
+
+Allow reading button input:
 
 ```
-sftp frizzkitten@10.0.0.68
-(enter password)
-lcd go/src/raspberry-alarm
-put raspberry-alarm
+sudo usermod -aG input pi-username
 ```
 
-Then on the Pi open a terminal and enable execution:
-
-```
-chmod +x raspberry-alarm
-```
-
-And then you can run it like this:
-
-```
-./raspberry-alarm
-```
-
-But it should also run automatically on startup if you've done the setup for that on the Pi:
+Auto-start on boot:
 
 ```
 mkdir -p ~/.config/autostart
 nano ~/.config/autostart/raspberry-alarm.desktop
 ```
 
-```
+```ini
 [Desktop Entry]
 Type=Application
 Name=Raspberry Alarm
-Exec=lxterminal -e /home/your-username/raspberry-alarm
+Exec=lxterminal -e /home/pi-username/raspberry-alarm
 ```
 
-You'll also need to give permission for the user to read inputs directly so we can read the button press:
+
+## Build & Deploy
+
+Rebuild for the Pi:
 
 ```
-sudo usermod -aG input your-username
+GOOS=linux GOARCH=arm64 go build -o raspberry-alarm .
+```
+
+Transfer to the Pi:
+
+```
+sftp pi-username@pi-ip
+lcd go/src/raspberry-alarm
+put raspberry-alarm
+```
+
+You can find the Pi's IP by hovering over the wifi symbol in the top right on the Pi.
+
+## Run Manually
+
+```
+chmod +x raspberry-alarm
+./raspberry-alarm
 ```
