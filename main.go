@@ -22,6 +22,7 @@ const (
 
 func main() {
 	log.Println("raspberry-alarm started")
+	playAlarm()
 	for {
 		now := time.Now()
 		next := time.Date(now.Year(), now.Month(), now.Day(), alarmHour, alarmMinute, 0, 0, now.Location())
