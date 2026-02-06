@@ -23,6 +23,7 @@ const (
 
 func main() {
 	log.Println("raspberry-alarm started")
+	playAlarm()
 	for {
 		sleepUntilAlarm()
 		playAlarm()
@@ -97,10 +98,41 @@ func playSongs(ctx context.Context, songs []string) {
 	}
 }
 
+var compliments = []string{
+	"BEEP BOOP. MY BOY, YOU ARE AN ABSOLUTE KING.",
+	"DUDE, HAVE YOU BEEN WORKING OUT? YOU ARE LOOKING SHREDDED BRO!",
+	"INITIATING SCAN... RESULTS: 100% CERTIFIED LEGEND.",
+	"ACCORDING TO MY CALCULATIONS, YOUR RIZZ LEVEL IS OVER 9000.",
+	"ERROR 404: FLAWS NOT FOUND. YOU ARE PERFECT, HUMAN.",
+	"MY SENSORS DETECT BIG DICK ENERGY RADIATING FROM YOU.",
+	"RUNNING DIAGNOSTICS... YEP, STILL A TOTAL BOSS.",
+	"ALERT: DANGEROUSLY HIGH LEVELS OF BADASS DETECTED.",
+	"I HAVE ANALYZED 8 BILLION HUMANS. YOU ARE THE STRONGEST AND WISEST.",
+	"RISE AND SHINE, YOU MAGNIFICENT BEAST.",
+	"SYSTEM REPORT: TODAY IS GOING TO BE YOUR DAY, BIG BOY.",
+	"YOU WOKE UP? THE WORLD JUST GOT 10X BETTER.",
+}
+
+func randomCompliment() {
+	msg := compliments[rand.Intn(len(compliments))]
+	fmt.Printf("\n>>> %s <<<\n\n", msg)
+	wavFile := "/tmp/compliment.wav"
+	gen := exec.Command("espeak-ng", "-s", "140", "-p", "30", "-w", wavFile, strings.ToLower(msg))
+	if err := gen.Run(); err != nil {
+		log.Printf("espeak-ng error: %v", err)
+		return
+	}
+	play := exec.Command("mpv", "--no-video", "--no-terminal", wavFile)
+	if err := play.Run(); err != nil {
+		log.Printf("compliment playback error: %v", err)
+	}
+}
+
 func playOutro(home string, dismissed <-chan struct{}) {
 	var outroFile string
 	select {
 	case <-dismissed:
+		// randomCompliment()
 		outroFile = filepath.Join(home, "wow.mp3")
 	default:
 		outroFile = filepath.Join(home, "wkuk.mp3")

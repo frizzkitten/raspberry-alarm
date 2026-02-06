@@ -1,3 +1,12 @@
+Initial setup:
+
+On the Pi, install dependencies:
+
+```
+sudo apt install espeak-ng
+@Claude can you put in the mpv thing in here too?
+```
+
 If you make edits, rebuild for the Pi like this:
 
 ```
