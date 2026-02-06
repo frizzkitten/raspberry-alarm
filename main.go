@@ -24,15 +24,19 @@ const (
 func main() {
 	log.Println("raspberry-alarm started")
 	for {
-		now := time.Now()
-		next := time.Date(now.Year(), now.Month(), now.Day(), alarmHour, alarmMinute, 0, 0, now.Location())
-		if !next.After(now) {
-			next = next.Add(24 * time.Hour)
-		}
-		log.Printf("next alarm at %s", next.Format(time.DateTime))
-		time.Sleep(time.Until(next))
+		sleepUntilAlarm()
 		playAlarm()
 	}
+}
+
+func sleepUntilAlarm() {
+	now := time.Now()
+	next := time.Date(now.Year(), now.Month(), now.Day(), alarmHour, alarmMinute, 0, 0, now.Location())
+	if !next.After(now) {
+		next = next.Add(24 * time.Hour)
+	}
+	log.Printf("next alarm at %s", next.Format(time.DateTime))
+	time.Sleep(time.Until(next))
 }
 
 func playAlarm() {
@@ -41,12 +45,30 @@ func playAlarm() {
 		log.Printf("cannot determine home directory: %v", err)
 		return
 	}
-	dir := filepath.Join(home, songsDir)
 
+	songs := findSongs(filepath.Join(home, songsDir))
+	if len(songs) == 0 {
+		return
+	}
+
+	log.Printf("alarm! playing from %d songs for %s (press 'a' to stop)", len(songs), alarmDuration)
+
+	ctx, cancel := context.WithTimeout(context.Background(), alarmDuration)
+	defer cancel()
+
+	dismissed := make(chan struct{}, 1)
+	listenForButton(ctx, cancel, dismissed)
+	playSongs(ctx, songs)
+	playOutro(home, dismissed)
+
+	log.Println("alarm finished")
+}
+
+func findSongs(dir string) []string {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		log.Printf("cannot read %s: %v", dir, err)
-		return
+		return nil
 	}
 
 	var songs []string
@@ -57,18 +79,11 @@ func playAlarm() {
 	}
 	if len(songs) == 0 {
 		log.Printf("no songs found in %s", dir)
-		return
 	}
+	return songs
+}
 
-	log.Printf("alarm! playing from %d songs for %s (press 'a' to stop)", len(songs), alarmDuration)
-
-	ctx, cancel := context.WithTimeout(context.Background(), alarmDuration)
-	defer cancel()
-
-	// Listen for 'a' keypress on all input devices (works without window focus).
-	dismissed := make(chan struct{}, 1)
-	listenForButton(ctx, cancel, dismissed)
-
+func playSongs(ctx context.Context, songs []string) {
 	for ctx.Err() == nil {
 		song := songs[rand.Intn(len(songs))]
 		log.Printf("playing %s", filepath.Base(song))
@@ -80,8 +95,9 @@ func playAlarm() {
 			log.Printf("playback error: %v", err)
 		}
 	}
+}
 
-	// Play a different sound depending on how the alarm ended.
+func playOutro(home string, dismissed <-chan struct{}) {
 	var outroFile string
 	select {
 	case <-dismissed:
@@ -89,44 +105,21 @@ func playAlarm() {
 	default:
 		outroFile = filepath.Join(home, "wkuk.mp3")
 	}
+
 	log.Printf("playing %s", outroFile)
-	cmd := exec.Command("mpv", "--no-video", outroFile)
+	cmd := exec.Command("mpv", "--no-video", "--no-terminal", outroFile)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
 		log.Printf("error playing outro: %v", err)
 	}
-
-	log.Println("alarm finished")
 }
 
 // listenForButton reads raw input events from /dev/input/event* devices
 // to detect an 'a' keypress regardless of window focus.
 func listenForButton(ctx context.Context, cancel context.CancelFunc, dismissed chan<- struct{}) {
-	const (
-		evKey     = 1  // EV_KEY event type
-		keyA      = 30 // KEY_A scancode
-		keyPress  = 1  // key pressed (vs released/held)
-		eventSize = 24 // sizeof(struct input_event) on 64-bit Linux
-	)
-
-	matches, err := filepath.Glob("/dev/input/event*")
-	if err != nil || len(matches) == 0 {
-		log.Println("warning: no input devices found")
-		return
-	}
-
-	var files []*os.File
-	for _, dev := range matches {
-		f, err := os.Open(dev)
-		if err != nil {
-			continue
-		}
-		files = append(files, f)
-	}
-
+	files := openInputDevices()
 	if len(files) == 0 {
-		log.Println("warning: cannot open any input devices (try: sudo usermod -aG input $USER)")
 		return
 	}
 
@@ -141,26 +134,57 @@ func listenForButton(ctx context.Context, cancel context.CancelFunc, dismissed c
 	}()
 
 	for _, f := range files {
-		go func(f *os.File) {
-			buf := make([]byte, eventSize)
-			for {
-				if _, err := io.ReadFull(f, buf); err != nil {
-					return
-				}
-				typ := binary.LittleEndian.Uint16(buf[16:18])
-				code := binary.LittleEndian.Uint16(buf[18:20])
-				value := binary.LittleEndian.Uint32(buf[20:24])
-				if typ == evKey && code == keyA && value == keyPress {
-					log.Println("alarm dismissed by button press")
-					select {
-					case dismissed <- struct{}{}:
-					default:
-					}
-					cancel()
-					return
-				}
+		go watchDevice(f, cancel, dismissed)
+	}
+}
+
+func openInputDevices() []*os.File {
+	matches, err := filepath.Glob("/dev/input/event*")
+	if err != nil || len(matches) == 0 {
+		log.Println("warning: no input devices found")
+		return nil
+	}
+
+	var files []*os.File
+	for _, dev := range matches {
+		f, err := os.Open(dev)
+		if err != nil {
+			continue
+		}
+		files = append(files, f)
+	}
+
+	if len(files) == 0 {
+		log.Println("warning: cannot open any input devices (try: sudo usermod -aG input $USER)")
+	}
+	return files
+}
+
+func watchDevice(f *os.File, cancel context.CancelFunc, dismissed chan<- struct{}) {
+	const (
+		evKey     = 1  // EV_KEY event type
+		keyA      = 30 // KEY_A scancode
+		keyPress  = 1  // key pressed (vs released/held)
+		eventSize = 24 // sizeof(struct input_event) on 64-bit Linux
+	)
+
+	buf := make([]byte, eventSize)
+	for {
+		if _, err := io.ReadFull(f, buf); err != nil {
+			return
+		}
+		typ := binary.LittleEndian.Uint16(buf[16:18])
+		code := binary.LittleEndian.Uint16(buf[18:20])
+		value := binary.LittleEndian.Uint32(buf[20:24])
+		if typ == evKey && code == keyA && value == keyPress {
+			log.Println("alarm dismissed by button press")
+			select {
+			case dismissed <- struct{}{}:
+			default:
 			}
-		}(f)
+			cancel()
+			return
+		}
 	}
 }
 
