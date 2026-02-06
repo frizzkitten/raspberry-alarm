@@ -43,6 +43,8 @@ Rebuild for the Pi:
 GOOS=linux GOARCH=arm64 go build -o raspberry-alarm .
 ```
 
+(You may need to have a different GOARCH depending on the version of your Pi.)
+
 Transfer to the Pi:
 
 ```
