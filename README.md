@@ -1,59 +1,114 @@
 # Raspberry Alarm
 
-A wake-up alarm that plays random songs from `~/WakeUpSongs` at 9AM every day for 15 minutes. Press a button to dismiss early and get a robot compliment. I have it set up to run on a Raspberry Pi with a speaker connected and a USB Button attached that sends the key "a" on button press.
+A wake-up alarm that plays random songs from `~/WakeUpSongs` at 9 AM every day for 15 minutes. Press a button to dismiss early. On boot, it plays a chime so you know it's running.
 
-## Pi Dependencies
+I have it set up on a Raspberry Pi with a speaker and a USB button that sends the key "a" on press.
+
+## How It Works
+
+1. On startup, plays `~/success.mp3` as a boot chime.
+2. Waits until 9:00 AM (re-checking the clock every minute to handle NTP corrections).
+3. Shuffles and plays songs from `~/WakeUpSongs/` for 15 minutes.
+4. If dismissed via the button, plays `~/success.mp3`. If time runs out, plays `~/failure.mp3`.
+5. Repeats from step 2.
+
+If no songs are found in `~/WakeUpSongs/`, the alarm plays `~/failure.mp3` so you still hear something.
+
+## File Setup
+
+Place these files in your home directory (`~`):
 
 ```
-sudo apt install mpv espeak-ng
+~/success.mp3          # played on boot and when alarm is dismissed
+~/failure.mp3          # played when alarm times out (or no songs found)
+~/WakeUpSongs/         # folder of .mp3 files (add as many as you like)
+    song1.mp3
+    song2.mp3
+    ...
+```
+
+## Dependencies
+
+```
+sudo apt install mpv
+```
+
+`espeak-ng` is also needed if you enable the robot compliments feature (see Note below):
+
+```
+sudo apt install espeak-ng
 ```
 
 ## Pi Setup (one-time)
 
-Allow reading button input:
+Allow reading button input without root:
 
 ```
-sudo usermod -aG input pi-username
+sudo usermod -aG input $USER
 ```
 
-Auto-start on boot:
+Log out and back in (or reboot) for the group change to take effect.
+
+### Auto-start on boot
+
+**Option A: systemd service (headless / Lite OS)**
+
+Create `/etc/systemd/system/raspberry-alarm.service`:
+
+```ini
+[Unit]
+Description=Raspberry Alarm
+After=network-online.target sound.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=YOUR_USERNAME
+ExecStart=/home/YOUR_USERNAME/raspberry-alarm
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Then enable it:
+
+```
+sudo systemctl daemon-reload
+sudo systemctl enable --now raspberry-alarm
+```
+
+**Option B: desktop autostart (Raspberry Pi OS with desktop)**
 
 ```
 mkdir -p ~/.config/autostart
-nano ~/.config/autostart/raspberry-alarm.desktop
 ```
+
+Create `~/.config/autostart/raspberry-alarm.desktop`:
 
 ```ini
 [Desktop Entry]
 Type=Application
 Name=Raspberry Alarm
-Exec=lxterminal -e /home/pi-username/raspberry-alarm
+Exec=lxterminal -e /home/YOUR_USERNAME/raspberry-alarm
 ```
-
-Then make a folder in the root directory of the Pi called WakeUpSongs. Inside it, put as many .mp3 files as you'd like!
-
-Then add a file called success.mp3 and another called failure.mp3 to the root directory. success.mp3 will play when the alarm is stopped via input, and failure.mp3 will play if the songs are not stopped within the allotted time.
-
 
 ## Build & Deploy
 
-Rebuild for the Pi:
+Cross-compile for your Pi. Run `uname -m` on the Pi to determine the architecture:
 
-```
-GOOS=linux GOARCH=arm64 go build -o raspberry-alarm .
-```
-
-(You may need to have a different GOARCH depending on the version of your Pi.)
+| `uname -m` | Pi models                                  | Build command                                           |
+|-------------|--------------------------------------------|---------------------------------------------------------|
+| `aarch64`   | Pi 3/4/5, Zero 2 W (64-bit OS)            | `GOOS=linux GOARCH=arm64 go build -o raspberry-alarm .` |
+| `armv7l`    | Pi 2/3/4 (32-bit OS)                       | `GOOS=linux GOARCH=arm GOARM=7 go build -o raspberry-alarm .` |
+| `armv6l`    | Pi 1, Zero, Zero W                         | `GOOS=linux GOARCH=arm GOARM=6 go build -o raspberry-alarm .` |
 
 Transfer to the Pi:
 
 ```
-sftp pi-username@pi-ip
-lcd go/src/raspberry-alarm
-put raspberry-alarm
+scp raspberry-alarm YOUR_USERNAME@PI_IP:~/
 ```
-
-You can find the Pi's IP by hovering over the wifi symbol in the top right on the Pi.
 
 ## Run Manually
 
@@ -62,6 +117,12 @@ chmod +x raspberry-alarm
 ./raspberry-alarm
 ```
 
+## Run Tests
+
+```
+go test -v ./...
+```
+
 ## Note
 
-I have the compliments turned off at the moment. You can turn them back on by uncommenting `randomCompliment()`.
+Robot compliments are currently disabled. To enable them, uncomment the `randomCompliment()` call in `playOutro`. This requires `espeak-ng` to be installed.
