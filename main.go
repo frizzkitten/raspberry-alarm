@@ -46,14 +46,19 @@ func playBootChime() {
 	}
 }
 
+func nextAlarmTime(now time.Time) time.Time {
+	next := time.Date(now.Year(), now.Month(), now.Day(), alarmHour, alarmMinute, 0, 0, now.Location())
+	if !next.After(now) {
+		next = next.AddDate(0, 0, 1)
+	}
+	return next
+}
+
 func sleepUntilAlarm() {
 	var logged time.Time
 	for {
 		now := time.Now()
-		next := time.Date(now.Year(), now.Month(), now.Day(), alarmHour, alarmMinute, 0, 0, now.Location())
-		if !next.After(now) {
-			next = next.AddDate(0, 0, 1)
-		}
+		next := nextAlarmTime(now)
 		remaining := time.Until(next)
 		if remaining <= 0 {
 			return
