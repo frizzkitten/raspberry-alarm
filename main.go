@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"strconv"
 	"time"
 )
 
@@ -89,6 +90,8 @@ func playAlarm() {
 
 	songs := findSongs(filepath.Join(home, songsDir))
 	if len(songs) == 0 {
+		log.Println("alarm! no songs found, playing failure outro")
+		playOutro(home, nil)
 		return
 	}
 
@@ -163,13 +166,20 @@ var compliments = []string{
 func randomCompliment() {
 	msg := compliments[rand.Intn(len(compliments))]
 	fmt.Printf("\n>>> %s <<<\n\n", msg)
-	wavFile := "/tmp/compliment.wav"
-	gen := exec.Command("espeak-ng", "-s", "140", "-p", "30", "-w", wavFile, strings.ToLower(msg))
+	wavFile, err := os.CreateTemp("", "compliment-*.wav")
+	if err != nil {
+		log.Printf("cannot create temp file: %v", err)
+		return
+	}
+	wavFile.Close()
+	defer os.Remove(wavFile.Name())
+
+	gen := exec.Command("espeak-ng", "-s", "140", "-p", "30", "-w", wavFile.Name(), strings.ToLower(msg))
 	if err := gen.Run(); err != nil {
 		log.Printf("espeak-ng error: %v", err)
 		return
 	}
-	play := exec.Command("mpv", "--no-video", "--no-terminal", wavFile)
+	play := exec.Command("mpv", "--no-video", "--no-terminal", wavFile.Name())
 	if err := play.Run(); err != nil {
 		log.Printf("compliment playback error: %v", err)
 	}
@@ -241,20 +251,30 @@ func openInputDevices() []*os.File {
 
 func watchDevice(f *os.File, cancel context.CancelFunc, dismissed chan<- struct{}) {
 	const (
-		evKey     = 1  // EV_KEY event type
-		keyA      = 30 // KEY_A scancode
-		keyPress  = 1  // key pressed (vs released/held)
-		eventSize = 24 // sizeof(struct input_event) on 64-bit Linux
+		evKey    = 1  // EV_KEY event type
+		keyA     = 30 // KEY_A scancode
+		keyPress = 1  // key pressed (vs released/held)
 	)
+
+	// sizeof(struct input_event) depends on the kernel's word size:
+	// 64-bit: timeval(16) + type(2) + code(2) + value(4) = 24
+	// 32-bit: timeval(8)  + type(2) + code(2) + value(4) = 16
+	var eventSize int
+	if strconv.IntSize == 64 {
+		eventSize = 24
+	} else {
+		eventSize = 16
+	}
+	timevalSize := eventSize - 8 // 16 or 8
 
 	buf := make([]byte, eventSize)
 	for {
 		if _, err := io.ReadFull(f, buf); err != nil {
 			return
 		}
-		typ := binary.LittleEndian.Uint16(buf[16:18])
-		code := binary.LittleEndian.Uint16(buf[18:20])
-		value := binary.LittleEndian.Uint32(buf[20:24])
+		typ := binary.LittleEndian.Uint16(buf[timevalSize : timevalSize+2])
+		code := binary.LittleEndian.Uint16(buf[timevalSize+2 : timevalSize+4])
+		value := binary.LittleEndian.Uint32(buf[timevalSize+4 : timevalSize+8])
 		if typ == evKey && code == keyA && value == keyPress {
 			log.Println("alarm dismissed by button press")
 			select {
