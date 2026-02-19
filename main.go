@@ -23,6 +23,7 @@ const (
 
 func main() {
 	log.Println("raspberry-alarm started")
+	playAlarm()
 	for {
 		sleepUntilAlarm()
 		playAlarm()
@@ -30,13 +31,27 @@ func main() {
 }
 
 func sleepUntilAlarm() {
-	now := time.Now()
-	next := time.Date(now.Year(), now.Month(), now.Day(), alarmHour, alarmMinute, 0, 0, now.Location())
-	if !next.After(now) {
-		next = next.Add(24 * time.Hour)
+	for {
+		now := time.Now()
+		next := time.Date(now.Year(), now.Month(), now.Day(), alarmHour, alarmMinute, 0, 0, now.Location())
+		if !next.After(now) {
+			next = next.Add(24 * time.Hour)
+		}
+		remaining := time.Until(next)
+		if remaining <= 0 {
+			return
+		}
+		log.Printf("next alarm at %s (in %s)", next.Format(time.DateTime), remaining.Round(time.Second))
+		// Sleep in short intervals and re-check the wall clock each iteration.
+		// This ensures NTP time corrections (common on Pi without a hardware RTC)
+		// are picked up rather than sleeping a stale duration.
+		if remaining > time.Minute {
+			time.Sleep(time.Minute)
+		} else {
+			time.Sleep(remaining)
+			return
+		}
 	}
-	log.Printf("next alarm at %s", next.Format(time.DateTime))
-	time.Sleep(time.Until(next))
 }
 
 func playAlarm() {
