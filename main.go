@@ -23,25 +23,46 @@ const (
 
 func main() {
 	log.Println("raspberry-alarm started")
-	playAlarm()
+	playBootChime()
 	for {
 		sleepUntilAlarm()
 		playAlarm()
 	}
 }
 
+func playBootChime() {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		log.Printf("cannot determine home directory: %v", err)
+		return
+	}
+	chime := filepath.Join(home, "success.mp3")
+	log.Printf("playing boot chime: %s", chime)
+	cmd := exec.Command("mpv", "--no-video", "--no-terminal", chime)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		log.Printf("error playing boot chime: %v", err)
+	}
+}
+
 func sleepUntilAlarm() {
+	var logged time.Time
 	for {
 		now := time.Now()
 		next := time.Date(now.Year(), now.Month(), now.Day(), alarmHour, alarmMinute, 0, 0, now.Location())
 		if !next.After(now) {
-			next = next.Add(24 * time.Hour)
+			next = next.AddDate(0, 0, 1)
 		}
 		remaining := time.Until(next)
 		if remaining <= 0 {
 			return
 		}
-		log.Printf("next alarm at %s (in %s)", next.Format(time.DateTime), remaining.Round(time.Second))
+		// Log once when the target time is first computed or changes (e.g. NTP correction).
+		if !next.Equal(logged) {
+			log.Printf("next alarm at %s (in %s)", next.Format(time.DateTime), remaining.Round(time.Second))
+			logged = next
+		}
 		// Sleep in short intervals and re-check the wall clock each iteration.
 		// This ensures NTP time corrections (common on Pi without a hardware RTC)
 		// are picked up rather than sleeping a stale duration.
@@ -100,14 +121,21 @@ func findSongs(dir string) []string {
 
 func playSongs(ctx context.Context, songs []string) {
 	for ctx.Err() == nil {
-		song := songs[rand.Intn(len(songs))]
-		log.Printf("playing %s", filepath.Base(song))
+		// Shuffle to avoid repeats, then play through the whole list.
+		// Re-shuffle each cycle so it stays fresh.
+		order := rand.Perm(len(songs))
+		for _, i := range order {
+			if ctx.Err() != nil {
+				return
+			}
+			log.Printf("playing %s", filepath.Base(songs[i]))
 
-		cmd := exec.CommandContext(ctx, "mpv", "--no-video", "--no-terminal", song)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil && ctx.Err() == nil {
-			log.Printf("playback error: %v", err)
+			cmd := exec.CommandContext(ctx, "mpv", "--no-video", "--no-terminal", songs[i])
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			if err := cmd.Run(); err != nil && ctx.Err() == nil {
+				log.Printf("playback error: %v", err)
+			}
 		}
 	}
 }
