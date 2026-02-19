@@ -2,7 +2,7 @@
 
 A wake-up alarm that plays random songs from `~/WakeUpSongs` at 9 AM every day for 15 minutes. Press a button to dismiss early. On boot, it plays a chime so you know it's running.
 
-I have it set up on a Raspberry Pi with a speaker and a USB button that sends the key "a" on press.
+I have mine set up on a Raspberry Pi with a speaker and a USB button that sends the key "a" on press, but of course configure however you please :)
 
 ## How It Works
 
@@ -109,6 +109,7 @@ Transfer to the Pi:
 ```
 scp raspberry-alarm YOUR_USERNAME@PI_IP:~/
 ```
+You can find the Pi's IP by hovering over the wifi symbol in the top right on the Pi.
 
 ## Run Manually
 
